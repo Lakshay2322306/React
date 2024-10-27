@@ -1,4 +1,4 @@
-# # config.py
-bot_token = 'YOUR_BOT_TOKEN_HERE'
-owner_id = 'YOUR_OWNER_ID_HERE'
-group_link = 'YOUR_GROUP_LINK_HERE'  # Set the default group link here
+# config.py
+bot_token = 'YOUR_MAIN_BOT_TOKEN_HERE'  # Token for the main bot
+owner_bot_token = 'YOUR_OWNER_BOT_TOKEN_HERE'  # Token for the owner bot
+owner_id = 'YOUR_OWNER_ID_HERE'  # Your Telegram user ID
