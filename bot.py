@@ -1,29 +1,30 @@
-# bot.py
 import requests
 import time
 import random
 from datetime import datetime
-from config import bot_token, owner_id, group_link  # Importing configurations
+from config import bot_token, owner_bot_token, owner_id
 
 # Telegram API URLs
 get_updates_url = f'https://api.telegram.org/bot{bot_token}/getUpdates'
 send_message_url = f'https://api.telegram.org/bot{bot_token}/sendMessage'
-registered_users = {}
 
-# List of emojis for user selection
-allowed_emojis = ["👍", "❤", "🔥", "🥰", "👏", "😁", "🤔", "🤯", "😱", "🎉", "🤩", 
-                  "🙏", "👌", "😍", "❤‍🔥", "🌚", "💯", "🤣", "💔", "🇮🇳", 
-                  "😈", "😭", "🤓", "😇", "🤝", "🤗", "🫡", "🤪", "🗿", "💀"]
+# Owner bot API URL
+owner_message_url = f'https://api.telegram.org/bot{owner_bot_token}/sendMessage'
 
-default_emoji = "😊"  # Default emoji for users who don't choose one
+# List of emojis
+default_emoji = "👍"  # Default emoji for users
+my_emoji = ["👍", "❤", "🔥", "🥰", "👏", "😁", "🤔", "🤯", "😱", "🎉", "🤩", 
+            "🙏", "👌", "😍", "❤‍🔥", "🌚", "💯", "🤣", "💔", "🇮🇳", 
+            "😈", "😭", "🤓", "😇", "🤝", "🤗", "🫡", "🤪", "🗿", "💀"]
 
-# To keep track of the last update so we don't repeat reactions
+# To keep track of the last update and user data
 last_update_id = None
+user_data = {}
 
 def get_new_messages():
     """Fetch new messages from the bot."""
     global last_update_id
-    params = {'timeout': 100}
+    params = {'timeout': 100}  # Wait for 100 seconds for new updates
     if last_update_id:
         params['offset'] = last_update_id + 1
 
@@ -33,65 +34,97 @@ def get_new_messages():
         return response.json()
     return None
 
-def send_message(chat_id, text, reply_markup=None):
+def send_message(chat_id, text):
     """Send a message to the specified chat."""
+    owner_credit = "\n\n*Owner: @Jukerhenapadega*"
     data = {
         "chat_id": chat_id,
-        "text": text,
-        "reply_markup": reply_markup,
+        "text": text + owner_credit,
         "parse_mode": "Markdown"
     }
-    response = requests.post(send_message_url, json=data)
-    return response
+    requests.post(send_message_url, json=data)
 
-def start_command(chat_id):
-    """Handle the /start command."""
-    welcome_text = "Welcome to the bot! Please join our group to use the bot features: " + group_link
-    send_message(chat_id, welcome_text)
+def notify_owner(username, user_id, registration_time):
+    """Send registration details to the owner bot."""
+    owner_message = (
+        f"New user registered:\n"
+        f"- Username: {username}\n"
+        f"- User ID: {user_id}\n"
+        f"- Time: {registration_time}\n\n"
+        f"*Owner: @Jukerhenapadega*"
+    )
+    
+    data = {
+        "chat_id": owner_id,
+        "text": owner_message,
+        "parse_mode": "Markdown"
+    }
+    requests.post(owner_message_url, json=data)
 
-def register_user(user_id, username, chat_id):
-    """Register a new user if they are in the group."""
-    if user_id not in registered_users:
-        registration_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        registered_users[user_id] = {
-            "username": username,
-            "chat_id": chat_id,
-            "registration_time": registration_time,
-            "emoji": default_emoji  # Assign default emoji
-        }
-        send_message(chat_id, f"Successfully registered!\nYour ID: {user_id}\nUsername: {username}\nTime: {registration_time}\nYour Emoji: {default_emoji}")
-    else:
-        send_message(chat_id, "You are already registered!")
+def register_user(user_id, username):
+    """Register a new user."""
+    registration_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    user_data[user_id] = {
+        "username": username,
+        "registration_time": registration_time,
+        "emoji": default_emoji  # Set default emoji
+    }
+    notify_owner(username, user_id, registration_time)
+    return f"Welcome {username}! You have been registered."
 
-def set_user_emoji(user_id, emoji):
-    """Set a custom emoji for the user."""
-    if user_id in registered_users and emoji in allowed_emojis:
-        registered_users[user_id]["emoji"] = emoji
-        send_message(registered_users[user_id]["chat_id"], f"Your emoji has been updated to: {emoji}")
-    else:
-        send_message(registered_users[user_id]["chat_id"], f"Invalid emoji choice! Please choose from: {', '.join(allowed_emojis)}")
+def handle_commands(update):
+    """Handle incoming commands."""
+    message = update['message']
+    chat_id = message['chat']['id']
+    user_id = message['from']['id']
+    username = message['from'].get('username', 'Unknown User')
 
-def remove_user_emoji(user_id):
-    """Remove the user's custom emoji, reverting to the default."""
-    if user_id in registered_users:
-        registered_users[user_id]["emoji"] = default_emoji
-        send_message(registered_users[user_id]["chat_id"], f"Your emoji has been removed. Default emoji set to: {default_emoji}")
+    if 'text' in message:
+        command = message['text'].strip()
 
-def broadcast_message(text):
-    """Send a message to all registered users."""
-    for user in registered_users.values():
-        send_message(user['chat_id'], text)
+        if command == '/start':
+            # Automatically register the user
+            response_message = register_user(user_id, username)
+            send_message(chat_id, response_message)
 
-def set_group_link(new_link):
-    """Set the group link for the owner."""
-    global group_link
-    group_link = new_link
-    send_message(owner_id, f"Group link updated to: {group_link}")
+        elif command == '/register':
+            response_message = register_user(user_id, username)
+            send_message(chat_id, response_message)
 
-def handle_new_member(chat_id, username):
-    """Send a welcome message to new group members."""
-    welcome_message = f"Welcome {username}! Glad to have you here. Enjoy your stay! Please remember to register using /register."
-    send_message(chat_id, welcome_message)
+        elif command.startswith('/setemoji'):
+            _, emoji = command.split(' ', 1)
+            if emoji in my_emoji:
+                user_data[user_id]["emoji"] = emoji
+                send_message(chat_id, f"Emoji set to: {emoji}")
+            else:
+                send_message(chat_id, "Invalid emoji. Please select from the predefined list.")
+
+        elif command == '/removeemoji':
+            user_data[user_id]["emoji"] = default_emoji
+            send_message(chat_id, "Emoji removed. Reset to default.")
+
+        elif command.startswith('/setgrouplink'):
+            _, new_link = command.split(' ', 1)
+            send_message(chat_id, f"Group link updated to: {new_link}")
+            # You can add functionality to store this link in a variable or database
+
+        elif command.startswith('/broadcast'):
+            _, broadcast_text = command.split(' ', 1)
+            # Implement broadcasting logic here
+            send_message(chat_id, f"Broadcasting message: {broadcast_text}")
+
+        elif command == '/help':
+            help_message = (
+                "Available commands:\n"
+                "/start - Register yourself\n"
+                "/register - Register your username\n"
+                "/setemoji <emoji> - Set your own emoji\n"
+                "/removeemoji - Remove your emoji\n"
+                "/setgrouplink <link> - Set the group link\n"
+                "/broadcast <message> - Send a message to all users\n"
+                "/help - Show this help message"
+            )
+            send_message(chat_id, help_message)
 
 def main():
     global last_update_id
@@ -103,42 +136,7 @@ def main():
             for update in updates['result']:
                 if 'message' in update:
                     message = update['message']
-                    chat_id = message['chat']['id']
-                    message_id = message['message_id']
-                    user_id = message['from']['id']
-                    username = message['from'].get('username', 'unknown_user')
-
-                    if message.get('text') == '/start':
-                        start_command(chat_id)
-
-                    elif message.get('text') == '/register':
-                        # Check if the user is in the group (force requirement)
-                        if message['chat']['type'] == 'supergroup':
-                            register_user(user_id, username, chat_id)
-                        else:
-                            send_message(chat_id, "You must join the group to use the bot. " + group_link)
-
-                    elif message.get('text').startswith('/setemoji'):
-                        _, emoji = message['text'].split(' ', 1)  # Extract the emoji
-                        set_user_emoji(user_id, emoji)
-
-                    elif message.get('text') == '/removeemoji':
-                        remove_user_emoji(user_id)
-
-                    elif message.get('text').startswith('/setgrouplink') and str(user_id) == owner_id:
-                        _, new_link = message['text'].split(' ', 1)  # Extract the new group link
-                        set_group_link(new_link)
-
-                    elif message.get('text').startswith('/broadcast') and str(user_id) == owner_id:
-                        _, broadcast_text = message['text'].split(' ', 1)
-                        broadcast_message(broadcast_text)
-
-                    if 'new_chat_members' in message:
-                        for new_member in message['new_chat_members']:
-                            new_user_id = new_member['id']
-                            new_username = new_member.get('username', 'unknown_user')
-                            handle_new_member(chat_id, new_username)
-
+                    handle_commands(update)
                     last_update_id = update['update_id']
 
         time.sleep(2)
